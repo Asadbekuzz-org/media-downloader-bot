@@ -56,7 +56,7 @@ async def fast_download_audio(search_query, message):
             'preferredcodec': 'mp3',
             'preferredquality': '192',
         }],
-        'default_search': 'ytsearch1',
+        'default_search': 'scsearch1',
     }
     try:
         loop = asyncio.get_event_loop()
