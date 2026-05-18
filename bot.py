@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 # 🔔 Ўз Телеграм ID рақамингизни шу ерга ёзинг!
 ADMIN_ID = 7705020569  
 
-TOKEN = os.getenv("8872513669:AAH8sY6wuLOYDS-eQpn6kCi3uZpDUjMTD8k")
+TOKEN = ("8872513669:AAH8sY6wuLOYDS-eQpn6kCi3uZpDUjMTD8k")
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
