@@ -1,159 +1,120 @@
 import os
-import asyncio
+import sqlite3
 import logging
-from aiogram import Bot, Dispatcher, F
-from aiogram.types import Message, FSInputFile
-from aiogram.filters import CommandStart
-from yt_dlp import YoutubeDL
+import yt_dlp
+from aiogram import Bot, Dispatcher, types, F
+from aiogram.filters import CommandStart, Command
 
-# Логлар
 logging.basicConfig(level=logging.INFO)
 
-BOT_TOKEN = "8872513669:AAHwZhYKwxxBnfHvNSOLn5rK7jENTaD1SgY"
-bot = Bot(token=BOT_TOKEN)
+# 🔔 МУҲИМ: Бу ерга ўз Телеграм ID рақамингизни ёзинг!
+ADMIN_ID = 7705020569  # Ўзингизникига алмаштиринг!
+
+TOKEN = os.getenv("8872513669:AAHwZhYKwxxBnfHvNSOLn5rK7jENTaD1SgY")
+bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-DOWNLOAD_DIR = "downloads"
-if not os.path.exists(DOWNLOAD_DIR):
-    os.makedirs(DOWNLOAD_DIR)
+# --- МАЪЛУМОТЛАР БАЗАСИ ---
+def init_db():
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, username TEXT)")
+    conn.commit()
+    conn.close()
 
-# 🚀 ТЕЛЕГРАМ КЭШ ТИЗИМИ (Видео ва Мусиқаларни эслаб қолиш учун оддий база)
-# Бу бот ўчиб ёқилгунча ишлайди. Тўлиқ база учун кейинроқ SQLite қўшамиз.
-video_cache = {}
-audio_cache = {}
+def add_user(user_id, username):
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("INSERT OR IGNORE INTO users (user_id, username) VALUES (?, ?)", (user_id, username))
+    conn.commit()
+    conn.close()
 
-COMMON_OPTS = {
-    'quiet': True,
-    'no_warnings': True,
-    'nocheckcertificate': True,
-    'socket_timeout': 10,
-    'prefer_insecure': True,
-    'external_downloader': 'aria2c', # Агар компьютерингизда aria2 бўлса, жуда тез юклайди
-}
+def get_stats():
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT COUNT(*) FROM users")
+    count = cursor.fetchone()[0]
+    conn.close()
+    return count
 
+init_db()
+
+# --- БУЙРУҚЛАР ---
 @dp.message(CommandStart())
-async def cmd_start(message: Message):
+async def start_cmd(message: types.Message):
+    add_user(message.from_user.id, message.from_user.username)
     await message.answer(
-        f"<b>Ассалому алайкум, {message.from_user.full_name}!</b>\n\n"
-        "⚡ <b>Мукаммаллаштирилган Ракета Бот!</b>\n"
-        "Бот энди кэш тизимида ишлайди ва юкланган файлларни сонияларда қайтаради.",
-        parse_mode="HTML"
+        f"👋 Ассалому алайкум, {message.from_user.full_name}!\n\n"
+        "📹 Менга Инстаграм ёки Фейсбук линкини юборинг (видео юклаб бераман).\n"
+        "🎵 Ёки шунчаки қўшиқ номини ёзинг (мусиқа топиб бераман)!"
     )
 
-# МУСИҚА ЮКЛАШ
-async def fast_download_audio(search_query, message):
-    # Агар бу қўшиқ олдин изланган бўлса, КЭШДАН ОЛИШ
-    if search_query in audio_cache:
-        await message.reply_audio(audio=audio_cache[search_query], caption="🎵 Кэшдан тезкор топилди!")
-        return
+@dp.message(Command("admin"))
+async def admin_cmd(message: types.Message):
+    if message.from_user.id == ADMIN_ID:
+        count = get_stats()
+        await message.answer(f"👑 **Ҳурматли Админ, хуш келибсиз!**\n\n📊 Ботдаги жами аъзолар: **{count}** та")
+    else:
+        await message.answer("⚠️ Бу буйруқ фақат бот adminи учун.")
 
-    audio_opts = {
-        **COMMON_OPTS,
-        'format': 'bestaudio/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/a_%(id)s.%(ext)s',
-        'postprocessors': [{
-            'key': 'FFmpegExtractAudio',
-            'preferredcodec': 'mp3',
-            'preferredquality': '192',
-        }],
-        'default_search': 'scsearch1',
-    }
-    try:
-        loop = asyncio.get_event_loop()
-        audio_info = await loop.run_in_executor(None, lambda: YoutubeDL(audio_opts).extract_info(search_query, download=True))
-        video_entry = audio_info['entries'][0]
-        audio_file = f"{DOWNLOAD_DIR}/a_{video_entry['id']}.mp3"
-        
-        audio_title = video_entry.get('title', 'Оригинал Мусиқа')
-        performer = video_entry.get('uploader', 'Мусиқа боти')
-
-        # Файлни юбориш ва ТEЛEГРAМ ID сини кэшга сақлаш
-        sent_audio = await message.reply_audio(audio=FSInputFile(audio_file), title=audio_title, performer=performer, caption="🎵 Тўлиқ оригинал варианти!")
-        audio_cache[search_query] = sent_audio.audio.file_id # Кичик сир мана шу ерда!
-        
-        os.remove(audio_file)
-    except Exception as e:
-        logging.error(f"Мусиқада хато: {e}")
-
-# ВИДЕО ЮКЛАШ
-@dp.message(F.text.contains("instagram") | F.text.contains("instagr") | 
-            F.text.contains("facebook") | F.text.contains("fb.watch"))
-async def handle_link(message: Message):
-    url = message.text.strip()
-
-    # 🚀 СИРЛИ ЖОЙИ: Агар бу линк олдин юкланган бўлса, 0 сонияда юбориш
-    if url in video_cache:
-        await message.reply_video(video=video_cache[url], caption="🎥 Олдин юкланган тайёр видео (Тезкор режим)!")
-        return
-
-    status_msg = await message.answer("⚡ Юклаш бошланди...")
-
-    video_opts = {
-        **COMMON_OPTS,
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        'outtmpl': f'{DOWNLOAD_DIR}/v_%(id)s.%(ext)s',
-        'merge_output_format': 'mp4',
-    }
-
-    try:
-        if "ddinstagram.com" in url:
-            url = url.replace("ddinstagram.com", "instagram.com")
-
-        loop = asyncio.get_event_loop()
-        video_info = await loop.run_in_executor(None, lambda: YoutubeDL(video_opts).extract_info(url, download=True))
-        
-        video_file = YoutubeDL(video_opts).prepare_filename(video_info)
-        if not video_file.endswith('.mp4'):
-            video_file = os.path.splitext(video_file)[0] + '.mp4'
-
-        # Видеони юбориш ва унинг Telegram ID сини кэшга ёзиб қўйиш
-        sent_video = await message.reply_video(video=FSInputFile(video_file), caption="🎥 Видео тайёр!")
-        video_cache[url] = sent_video.video.file_id # Линкни базага файл_ид билан боғладик
-        
-        # Орқа фонда оригинал мусиқа қидируви
-        desc = video_info.get('title', '') or video_info.get('description', 'Популярная музыка')
-        search_query = ' '.join(desc.split()[:5])
-        asyncio.create_task(fast_download_audio(search_query, message))
-
-        os.remove(video_file)
-        await status_msg.delete()
-
-    except Exception as e:
-        # Прокси усули
-        if "instagram.com" in url:
-            proxy_url = url.replace("instagram.com", "ddinstagram.com")
-            try:
-                loop = asyncio.get_event_loop()
-                video_info = await loop.run_in_executor(None, lambda: YoutubeDL(video_opts).extract_info(proxy_url, download=True))
-                video_file = YoutubeDL(video_opts).prepare_filename(video_info)
-                if not video_file.endswith('.mp4'):
-                    video_file = os.path.splitext(video_file)[0] + '.mp4'
-
-                sent_video = await message.reply_video(video=FSInputFile(video_file), caption="🎥 Видео тайёр!")
-                video_cache[url] = sent_video.video.file_id
+# --- ХАБАРЛАРНИ УШЛАШ ВА ЮКЛАШ ҚИСМИ ---
+@dp.message()
+async def handle_message(message: types.Message):
+    text = message.text.strip()
+    
+    # Инстаграм ёки Фейсбук линки бўлса
+    if "instagram.com" in text or "facebook.com" in text or "fb.watch" in text:
+        msg = await message.answer("⏳ Видео юкланмоқда, илтимос кутинг...")
+        try:
+            ydl_opts = {
+                'outtmpl': 'video.mp4', 
+                'format': 'best',
+                'merge_output_format': 'mp4'
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([text])
+            
+            video = types.FSInputFile("video.mp4")
+            await message.reply_video(video=video, caption="📹 Сиз сўраган видео тайёр!")
+            
+            # Файлни тозалаймиз
+            if os.path.exists("video.mp4"):
+                os.remove("video.mp4")
+            await bot.delete_message(message.chat.id, msg.message_id)
+            
+        except Exception as e:
+            await msg.edit_text(f"❌ Видео юклашда хатолик бўлди. Линк нотўғри ёки видео ёпиқ профилда бўлиши мумкин.")
+            if os.path.exists("video.mp4"):
+                os.remove("video.mp4")
+            
+    # Оддий текст бўлса — Мусиқа қидиради
+    else:
+        msg = await message.answer("🔍 Мусиқа қидирилмоқда...")
+        try:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'default_search': 'scsearch1',
+                'outtmpl': 'music.mp3',
+                'noplaylist': True
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                ydl.download([text])
                 
-                desc = video_info.get('description', 'Популярная музыка')
-                search_query = ' '.join(desc.split()[:5])
-                asyncio.create_task(fast_download_audio(search_query, message))
-                
-                os.remove(video_file)
-                await status_msg.delete()
-                return
-            except Exception:
-                pass
-        await status_msg.edit_text("❌ Юклашда хатолик бўлди.")
-
-@dp.message(F.text)
-async def search_music(message: Message):
-    query = message.text.strip()
-    if query.startswith("http"): return
-    status_msg = await message.answer(f"🔍 '{query}' изланмоқда...")
-    await fast_download_audio(query, message)
-    try: await status_msg.delete()
-    except: pass
+            audio = types.FSInputFile("music.mp3")
+            await message.reply_audio(audio=audio, caption=f"🎵 {text} — топилди!")
+            
+            if os.path.exists("music.mp3"):
+                os.remove("music.mp3")
+            await bot.delete_message(message.chat.id, msg.message_id)
+            
+        except Exception as e:
+            await msg.edit_text("❌ Афсуски, бундай мусиқа топилмади.")
+            if os.path.exists("music.mp3"):
+                os.remove("music.mp3")
 
 async def main():
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
+    import asyncio
     asyncio.run(main())
