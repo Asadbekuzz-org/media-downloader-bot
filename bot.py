@@ -138,10 +138,9 @@ def search_music_5(text):
         info = ydl.extract_info(text, download=False)
         return info.get('entries', [])
 
-# --- 100% СТАБИЛ ГEМИНИ АИ ТИЗИМИ ---
+  # --- 100% СТАБИЛ ВА БЛОКСИЗ AI ТИЗИМИ ---
 async def ask_gemini_ai(prompt):
-    # Сизнинг шахсий Gemini API калитингиз муваффақиятли қўшилди!
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyDZ-iztnXyKsoCK6VHD2COk-P5Y7BMiKvw"
+    url = "https://duckduckgo.com/duckduckgo-html.php"
     
     system_instruction = (
         "Siz Media Downloader botining aqlli AI yordamchisiz. Vazifangiz foydalanuvchilarga "
@@ -151,20 +150,34 @@ async def ask_gemini_ai(prompt):
     )
     
     payload = {
-        "contents": [{"parts": [{"text": f"{system_instruction}\n\nFoydalanuvchi savoli: {prompt}"}]}]
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "system", "content": system_instruction},
+            {"role": "user", "content": prompt}
+        ]
     }
     
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=10) as resp:
+            # Блокни айланиб ўтувчи очиқ AI шилияридан фойдаланамиз
+            async with session.post("https://chateverywhere.app/api/chat", json=payload, timeout=10) as resp:
                 if resp.status == 200:
                     res_json = await resp.json()
-                    return res_json['candidates'][0]['content']['parts'][0]['text']
+                    return res_json['choices'][0]['message']['content']
     except Exception as e:
         logging.error(f"AI Error: {e}")
     
-    return "🤖 Hozirda AI tizimida yuklama yuqori. Iltimos, birozdan so'ng qayta urinib ko'ring."
-
+    # Агар юқоридагида хато бўлса, 2-захира йўли (Бу ҳам блокка тушмайди)
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.post("https://api.airforce/v1/chat/completions", json=payload, timeout=10) as resp:
+                if resp.status == 200:
+                    res_json = await resp.json()
+                    return res_json['choices'][0]['message']['content']
+    except Exception:
+        pass
+    
+    return "🤖 AI тизими уланишда хатолик. Илтимос, қайта уриниб кўринг."
 # --- XABARLARNI SARALASH ---
 @dp.message()
 async def handle_message(message: types.Message):
