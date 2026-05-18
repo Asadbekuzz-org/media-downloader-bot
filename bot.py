@@ -7,16 +7,22 @@ import aiohttp
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
 from aiohttp import web
 
 logging.basicConfig(level=logging.INFO)
 
-# --- БОТ СОЗЛАМАЛАРИ ---
+# --- БОТ СОЗЛАМАЛАРИ (МАЪЛУМОТЛАРИНГИЗ ТЎЛИҚ ЖОЙЛАНДИ) ---
 ADMIN_ID = 7705020569  
 TOKEN = "8872513669:AAH8sY6wuLOYDS-eQpn6kCi3uZpDUjMTD8k"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
+
+# --- FSM (РАССИЛКА УЧУН ҲОЛАТЛАР) ---
+class BroadcastState(StatesGroup):
+    waiting_for_message = State()
 
 # --- МАЪЛУМОТЛАР БАЗАСИ ---
 def init_db():
@@ -41,6 +47,14 @@ def get_stats():
     conn.close()
     return count
 
+def get_all_users():
+    conn = sqlite3.connect("users.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT user_id FROM users")
+    users = [row[0] for row in cursor.fetchall()]
+    conn.close()
+    return users
+
 init_db()
 
 # --- START VA ADMIN PANEL ---
@@ -57,7 +71,52 @@ async def start_cmd(message: types.Message):
 async def admin_cmd(message: types.Message):
     if message.from_user.id == ADMIN_ID:
         count = get_stats()
-        await message.answer(f"👑 **Admin Panel**\n\n📊 Botdagi jami a'zolar: **{count}** ta")
+        builder = InlineKeyboardBuilder()
+        builder.button(text="📢 Reklama / Elon yuborish", callback_data="send_broadcast")
+        
+        await message.answer(
+            f"👑 **Admin Panel**\n\n📊 Botdagi jami a'zolar: **{count}** ta",
+            reply_markup=builder.as_markup()
+        )
+
+# --- РАССИЛКА ФУНКЦИЯСИ (ҲАММАГА ХАБАР ЮБОРИШ) ---
+@dp.callback_query(lambda c: c.data == "send_broadcast")
+async def start_broadcast(callback: types.CallbackQuery, state: FSMContext):
+    if callback.from_user.id != ADMIN_ID:
+        return
+    
+    await callback.message.answer("✍️ **Hamma foydalanuvchilarga yubormoqchi bo'lgan xabaringizni yozing.**\n"
+                                  "Bu matn, rasm, video yoki audio bo'lishi mumkin. Bekor qilish uchun /cancel deb yozing.")
+    await state.set_state(BroadcastState.waiting_for_message)
+    await callback.answer()
+
+@dp.message(Command("cancel"))
+async def cancel_broadcast(message: types.Message, state: FSMContext):
+    await state.clear()
+    await message.answer("❌ Reklama yuborish bekor qilindi.")
+
+@dp.message(BroadcastState.waiting_for_message)
+async def process_broadcast_message(message: types.Message, state: FSMContext):
+    if message.from_user.id != ADMIN_ID:
+        return
+    
+    await state.clear()
+    user_ids = get_all_users()
+    
+    status_msg = await message.answer(f"⏳ **Yuborish boshlandi...**\nJami foydalanuvchilar: {len(user_ids)} ta.")
+    
+    success = 0
+    failed = 0
+    
+    for user_id in user_ids:
+        try:
+            await message.copy_to(chat_id=user_id)
+            success += 1
+            await asyncio.sleep(0.05)
+        except Exception:
+            failed += 1
+            
+    await status_msg.edit_text(f"📢 **Xabar hamma foydalanuvchilarga yuborildi!**\n\n✅ Muvaqqiyatli: {success} ta\n❌ Yetkazilmadi (botni o'chirgan): {failed} ta")
 
 # --- MEDIA FUNKSIYALARI ---
 def download_media(url, mode, filename):
@@ -81,7 +140,8 @@ def search_music_5(text):
 
 # --- 100% СТАБИЛ ГEМИНИ АИ ТИЗИМИ ---
 async def ask_gemini_ai(prompt):
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyD-unmXzG17vXfBExxN_XpM4_08gX1kEwQ"
+    # Сизнинг шахсий Gemini API калитингиз муваффақиятли қўшилди!
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyBn0kbUi1Ecp-buIuF6wbD6SrYaq_EuAzM"
     
     system_instruction = (
         "Siz Media Downloader botining aqlli AI yordamchisiz. Vazifangiz foydalanuvchilarga "
@@ -187,25 +247,20 @@ async def handle_callbacks(callback: types.CallbackQuery):
         ai_response = await ask_gemini_ai(original_text)
         await msg.edit_text(f"🤖 **AI Ekspert:**\n\n{ai_response}")
 
-# --- RENDER PORTINI АНИҚ ОЧИШ ТИЗИМИ (RENDER ХАТОЛИГИНИ ДАВОСИ) ---
+# --- RENDER PORT ТИЗИМИ ---
 async def start_web_server():
     async def handle(request):
-        return web.Response(text="Bot is running completely live!")
+        return web.Response(text="Bot is running completely live with custom Gemini API!")
 
     app = web.Application()
     app.router.add_get('/', handle)
-    
     runner = web.AppRunner(app)
     await runner.setup()
-    
-    # Render берган портни оламиз, бўлмаса 10000-портни очамиз
     port = int(os.environ.get('PORT', 10000))
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
-    print(f"✅ Web server {port} портда муваффақиятли ишга тушди!")
 
 async def main():
-    # Бот ва Веб-серверни бир вақтда параллел ишга туширамиз
     await start_web_server()
     await dp.start_polling(bot)
 
