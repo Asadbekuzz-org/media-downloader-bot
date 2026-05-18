@@ -81,7 +81,6 @@ def search_music_5(text):
 
 # --- 100% СТАБИЛ ГEМИНИ АИ ТИЗИМИ ---
 async def ask_gemini_ai(prompt):
-    # Бу бепул ва жуда тезкор очиқ API манзили (Гемини базасида ишлайди)
     url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyD-unmXzG17vXfBExxN_XpM4_08gX1kEwQ"
     
     system_instruction = (
@@ -188,21 +187,26 @@ async def handle_callbacks(callback: types.CallbackQuery):
         ai_response = await ask_gemini_ai(original_text)
         await msg.edit_text(f"🤖 **AI Ekspert:**\n\n{ai_response}")
 
-# --- RENDER PORT ТИЗИМИ ---
-async def main():
+# --- RENDER PORTINI АНИҚ ОЧИШ ТИЗИМИ (RENDER ХАТОЛИГИНИ ДАВОСИ) ---
+async def start_web_server():
     async def handle(request):
-        return web.Response(text="Bot is live!")
+        return web.Response(text="Bot is running completely live!")
 
     app = web.Application()
     app.router.add_get('/', handle)
     
     runner = web.AppRunner(app)
     await runner.setup()
-    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get('PORT', 10000)))
     
-    asyncio.create_task(site.start())
-    print("🤖 Порт очилди, Render энди ботни ўчирмайди!")
+    # Render берган портни оламиз, бўлмаса 10000-портни очамиз
+    port = int(os.environ.get('PORT', 10000))
+    site = web.TCPSite(runner, '0.0.0.0', port)
+    await site.start()
+    print(f"✅ Web server {port} портда муваффақиятли ишга тушди!")
 
+async def main():
+    # Бот ва Веб-серверни бир вақтда параллел ишга туширамиз
+    await start_web_server()
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
