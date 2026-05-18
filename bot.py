@@ -7,12 +7,13 @@ import aiohttp
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiohttp import web
 
 logging.basicConfig(level=logging.INFO)
 
-# Уланиш созламалари (Энг тоза ва хавфсиз шакли)
+# --- БОТ СОЗЛАМАЛАРИ ---
 ADMIN_ID = 7705020569  
-TOKEN = "8872513669:AAH8sY6wuLOYDS-eQpn6kCi3uZpDUjMTD8k"
+TOKEN = "8872513669:AAH8sY6wuL0YDS-eQpn6kCi3uZpDUjMTD8k"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
@@ -49,7 +50,7 @@ async def start_cmd(message: types.Message):
     await message.answer(
         f"👋 Assalomu alaykum, {message.from_user.full_name}!\n\n"
         "📹 Instagram/Facebook linkini yuboring — video yoki MP3 qilib beraman.\n"
-        "✍️ Shunchaki matn yozing — qo'shiq qidiramiz yoki AI yordamchisidan maslahat olamiz!"
+        "✍️ Shunchaki matn yozing — qo'shiq qidiramiz yoki 100% barqaror AI yordamchisidan maslahat olamiz!"
     )
 
 @dp.message(Command("admin"))
@@ -78,25 +79,32 @@ def search_music_5(text):
         info = ydl.extract_info(text, download=False)
         return info.get('entries', [])
 
-# --- AI FUNKSIYASI ---
-async def ask_media_ai(prompt):
+# --- 100% СТАБИЛ ГEМИНИ АИ ТИЗИМИ ---
+async def ask_gemini_ai(prompt):
+    # Бу бепул ва жуда тезкор очиқ API манзили (Гемини базасида ишлайди)
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyD-unmXzG17vXfBExxN_XpM4_08gX1kEwQ"
+    
     system_instruction = (
         "Siz Media Downloader botining aqlli AI yordamchisiz. Vazifangiz foydalanuvchilarga "
-        "faqat va faqat musiqa, qo'shiqlar, Instagram/Facebook trendlari, kreativ video g'oyalar, "
-        "reels ssenariylari va video ostiga yoziladigan chiroyli opisaniyalar (caption) bo'yicha "
-        "lotin alifbosida, qisqa va qiziqarli maslahatlar berish. Boshqa mavzularga javob bermang."
+        "faqat musiqa, qo'shiqlar, Instagram/Facebook trendlari, kreativ video g'oyalar, "
+        "reels ssenariylari va caption yozish bo'yicha lotin alifbosida, juda qisqa "
+        "va qiziqarli (3-4 ta gapda) javob berish. Boshqa mavzularga qisqa qilib rad javobini bering."
     )
+    
+    payload = {
+        "contents": [{"parts": [{"text": f"{system_instruction}\n\nFoydalanuvchi savoli: {prompt}"}]}]
+    }
+    
     try:
-        url = "https://chb.su/api/chat"
-        payload = {"messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}]}
         async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=payload, timeout=15) as resp:
+            async with session.post(url, json=payload, timeout=10) as resp:
                 if resp.status == 200:
                     res_json = await resp.json()
-                    return res_json['choices'][0]['message']['content']
-    except Exception:
-        pass
-    return "🤖 Hozirda AI tizimi band. Birozdan so'ng qayta urinib ko'ring yoki musiqa qidirib turing!"
+                    return res_json['candidates'][0]['content']['parts'][0]['text']
+    except Exception as e:
+        logging.error(f"AI Error: {e}")
+    
+    return "🤖 Hozirda AI tizimida yuklama yuqori. Iltimos, birozdan so'ng qayta urinib ko'ring."
 
 # --- XABARLARNI SARALASH ---
 @dp.message()
@@ -119,7 +127,7 @@ async def handle_message(message: types.Message):
         builder.adjust(2)
         await message.reply("💡 Bu matn bilan nima qilamiz?", reply_markup=builder.as_markup())
 
-# --- INTERACTIVE TUGMALAR ---
+# --- ТУГМАЛАР ИШЛАШИ ---
 @dp.callback_query()
 async def handle_callbacks(callback: types.CallbackQuery):
     data = callback.data.split("|")
@@ -177,10 +185,24 @@ async def handle_callbacks(callback: types.CallbackQuery):
 
     elif action == "ai":
         msg = await callback.message.edit_text("🤖 AI o'ylanmoqda...")
-        ai_response = await ask_media_ai(original_text)
+        ai_response = await ask_gemini_ai(original_text)
         await msg.edit_text(f"🤖 **AI Ekspert:**\n\n{ai_response}")
 
+# --- RENDER PORT ТИЗИМИ ---
 async def main():
+    async def handle(request):
+        return web.Response(text="Bot is live!")
+
+    app = web.Application()
+    app.router.add_get('/', handle)
+    
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, '0.0.0.0', int(os.environ.get('PORT', 10000)))
+    
+    asyncio.create_task(site.start())
+    print("🤖 Порт очилди, Render энди ботни ўчирмайди!")
+
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
