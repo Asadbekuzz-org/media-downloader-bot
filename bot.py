@@ -141,7 +141,7 @@ def search_music_5(text):
 # --- 100% СТАБИЛ ГEМИНИ АИ ТИЗИМИ ---
 async def ask_gemini_ai(prompt):
     # Сизнинг шахсий Gemini API калитингиз муваффақиятли қўшилди!
-    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyBn0kbUi1Ecp-buIuF6wbD6SrYaq_EuAzM"
+    url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=AIzaSyDZ-iztnXyKsoCK6VHD2COk-P5Y7BMiKvw"
     
     system_instruction = (
         "Siz Media Downloader botining aqlli AI yordamchisiz. Vazifangiz foydalanuvchilarga "
