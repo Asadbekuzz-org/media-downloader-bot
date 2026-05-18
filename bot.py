@@ -3,19 +3,21 @@ import sqlite3
 import logging
 import yt_dlp
 import asyncio
+import aiohttp
 from aiogram import Bot, Dispatcher, types
 from aiogram.filters import CommandStart, Command
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 
 logging.basicConfig(level=logging.INFO)
 
-# Уланиш созламалари
+# Уланиш созламалари (Энг тоза ва хавфсиз шакли)
 ADMIN_ID = 7705020569  
-TOKEN = "8872513669:AAH8sY6wuL0YDS-eQpn6kCi3uZpDUjMTD8k"
+TOKEN = "8872513669:AAH8sY6wuLOYDS-eQpn6kCi3uZpDUjMTD8k"
+
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
 
-# --- МАЪЛУМОТЛАР БАЗАСИ (Лотинча) ---
+# --- МАЪЛУМОТЛАР БАЗАСИ ---
 def init_db():
     conn = sqlite3.connect("users.db")
     cursor = conn.cursor()
@@ -40,7 +42,7 @@ def get_stats():
 
 init_db()
 
-# --- СТАРТ ВА АДМИН БУЙРУҚЛАРИ ---
+# --- START VA ADMIN PANEL ---
 @dp.message(CommandStart())
 async def start_cmd(message: types.Message):
     add_user(message.from_user.id, message.from_user.username)
@@ -56,7 +58,7 @@ async def admin_cmd(message: types.Message):
         count = get_stats()
         await message.answer(f"👑 **Admin Panel**\n\n📊 Botdagi jami a'zolar: **{count}** ta")
 
-# --- МEДИА ВА ҚИДИРУВ ФУНКЦИЯЛАРИ ---
+# --- MEDIA FUNKSIYALARI ---
 def download_media(url, mode, filename):
     if mode == "video":
         ydl_opts = {'outtmpl': filename, 'format': 'best', 'merge_output_format': 'mp4', 'quiet': True}
@@ -76,9 +78,8 @@ def search_music_5(text):
         info = ydl.extract_info(text, download=False)
         return info.get('entries', [])
 
-# --- AI ФУНКЦИЯСИ (Минималистик ва тезкор кутубхонасиз тизим) ---
+# --- AI FUNKSIYASI ---
 async def ask_media_ai(prompt):
-    # Бот мавзусини AI га уқтириш (Промпт)
     system_instruction = (
         "Siz Media Downloader botining aqlli AI yordamchisiz. Vazifangiz foydalanuvchilarga "
         "faqat va faqat musiqa, qo'shiqlar, Instagram/Facebook trendlari, kreativ video g'oyalar, "
@@ -86,9 +87,7 @@ async def ask_media_ai(prompt):
         "lotin alifbosida, qisqa va qiziqarli maslahatlar berish. Boshqa mavzularga javob bermang."
     )
     try:
-        # Тезкор бепул API орқали GPT-4 дан жавоб олиш
-        import aiohttp
-        url = "https://chb.su/api/chat" # Муқобил очиқ AI тармоғи
+        url = "https://chb.su/api/chat"
         payload = {"messages": [{"role": "system", "content": system_instruction}, {"role": "user", "content": prompt}]}
         async with aiohttp.ClientSession() as session:
             async with session.post(url, json=payload, timeout=15) as resp:
@@ -99,39 +98,32 @@ async def ask_media_ai(prompt):
         pass
     return "🤖 Hozirda AI tizimi band. Birozdan so'ng qayta urinib ko'ring yoki musiqa qidirib turing!"
 
-# --- ХАБАРЛАРНИ СAРАЛАШ ҚИСМИ ---
+# --- XABARLARNI SARALASH ---
 @dp.message()
 async def handle_message(message: types.Message):
     if not message.text:
-        await message.answer("⚠️ Iltimos, menga faqat link yoki matn yuboring!")
         return
 
     text = message.text.strip()
 
-    # Линк келса (Instagram / Facebook)
     if any(x in text for x in ["instagram.com", "facebook.com", "fb.watch", "fb.gg"]):
         builder = InlineKeyboardBuilder()
         builder.button(text="📹 Videoni yuklash", callback_data=f"vid|{text[:40]}")
         builder.button(text="🎵 MP3 (Musiqasini olish)", callback_data=f"aud|{text[:40]}")
         builder.adjust(1)
         await message.reply("⚙️ Formatni tanlang:", reply_markup=builder.as_markup())
-
-    # Текст келса — Танлов тугмалари чиқади (Минимализм)
     else:
         builder = InlineKeyboardBuilder()
-        # Текстни тугма ичида хавфсиз олиб юриш учун вақтинчалик яширамиз
         builder.button(text="🔍 Musiqa qidirish", callback_data=f"search|{text[:40]}")
         builder.button(text="🤖 AI dan so'rash", callback_data=f"ai|{text[:40]}")
         builder.adjust(2)
         await message.reply("💡 Bu matn bilan nima qilamiz?", reply_markup=builder.as_markup())
 
-# --- ТУГМАЛАР ИШЛАШИ (Callback) ---
+# --- INTERACTIVE TUGMALAR ---
 @dp.callback_query()
 async def handle_callbacks(callback: types.CallbackQuery):
     data = callback.data.split("|")
     action = data[0]
-    
-    # Тўлиқ асл матнни олиш (агар линк ёки текст узун бўлса хабардан ўқийди)
     original_text = callback.message.reply_to_message.text if callback.message.reply_to_message else callback.message.text
 
     await callback.answer("⏳ Jarayon boshlandi...")
