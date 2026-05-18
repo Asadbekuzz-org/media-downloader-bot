@@ -15,7 +15,7 @@ logging.basicConfig(level=logging.INFO)
 
 # --- БОТ СОЗЛАМАЛАРИ (МАЪЛУМОТЛАРИНГИЗ ТЎЛИҚ ЖОЙЛАНДИ) ---
 ADMIN_ID = 7705020569  
-TOKEN = "8872513669:AAH8sY6wuLOYDS-eQpn6kCi3uZpDUjMTD8k"
+TOKEN = "8872513669:AAFyCT8DRYsNDAdG-UNOG-T8juES-B97_gE"
 
 bot = Bot(token=TOKEN)
 dp = Dispatcher()
